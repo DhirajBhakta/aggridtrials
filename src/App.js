@@ -3,6 +3,8 @@ import './App.css';
 import { AgGridReact } from 'ag-grid-react';
 import 'ag-grid-community/dist/styles/ag-grid.css';
 import 'ag-grid-community/dist/styles/ag-theme-balham.css';
+import { jsx, css, keyframes } from 'emotion'
+
 
 import DATA from './testdata';
 DATA.forEach(d => {
@@ -54,6 +56,19 @@ const NAMES = [
   "Frank"
 ]
 
+
+const fadeIn = keyframes`
+0%   { opacity: 0; }
+50%  { opacity: 0; }
+100% { opacity: 1; }
+`
+
+const fadeOut = keyframes`
+0%   { opacity: 1; }
+50%  { opacity: 0; }
+100% { opacity: 0; }
+`
+
 const uniqueIdGenerator = (() => {
   const alreadyUsedIds = new Set();
   return function makeid(length) {
@@ -94,13 +109,17 @@ function addOnClick(element, onclick) {
   return element;
 }
 const collapseIcon_Stringified = (oncollapse) => {
-  const ele = createElementFromHTML(`<i style="color:blue;margin:3px;cursor:pointer">( + )</i>`);
+  const ele = createElementFromHTML(`<img src="https://img.icons8.com/material/17/000000/add.png" style='vertical-align:middle; margin:3px;'/>`);
+  // const ele = createElementFromHTML(`<i style="color:blue;margin:3px;cursor:pointer">( + )</i>`);
   addOnClick(ele, () => oncollapse());
   return createHTMLFromElement(ele);
 
 }
 const expandIcon_Stringified = (onexpand) => {
-  const ele = createElementFromHTML(`<i style="color:blue;margin:3px;cursor:pointer">( - )</i>`);
+  const ele = createElementFromHTML(`<img src="https://img.icons8.com/material/13/000000/minus.png" style='vertical-align:middle; margin:3px'/>`);
+
+  // <img src="https://img.icons8.com/ios-filled/50/000000/minus.png"/>
+  // const ele = createElementFromHTML(`<i style="color:blue;margin:3px;cursor:pointer">( - )</i>`);
   addOnClick(ele, () => onexpand());
   return createHTMLFromElement(ele);
 }
@@ -113,6 +132,7 @@ function App() {
   const hide = (orgId) => {
     setRows(
       rows.map(row => {
+        row._appearNow = false;
         if (row.orgId === orgId && row._type === 'TRADER') {
           row.hidden = true;
         }
@@ -126,16 +146,18 @@ function App() {
   }
 
   const show = (orgId) => {
-    debugger;
     setRows(
       rows.map(row => {
+        row._appearNow = false;
         if (row.orgId === orgId && row._type === 'TRADER') {
           row.hidden = false;
+          row._appearNow = true;
         }
 
         if (row.orgId === orgId && row._type === 'BROKER') {
           row.collapsed = false;
         }
+
         return row;
       })
     )
@@ -148,6 +170,7 @@ function App() {
     {
       headerName: 'Broker Name',
       field: 'employee_name',
+      pinned: 'left',
       cellStyle: { textAlign: 'left' },
       cellRenderer: (params) => {
 
@@ -165,14 +188,17 @@ function App() {
     {
       headerName: 'Salary',
       valueFormatter: (params) => '$ ' + params.value,
+      pinned: 'left',
       field: 'employee_salary'
     },
     {
       headerName: 'Age',
+      pinned: 'left',
       field: 'employee_age'
     },
     {
       headerName: 'ORG ID',
+      pinned: 'left',
       field: 'orgId'
     },
     ...NAMES.map(name => ({
@@ -188,10 +214,20 @@ function App() {
       <AgGridReact
         rowData={rows.filter(r => r._type == 'BROKER' || !r.hidden)}
         columnDefs={coldef}
-        getRowStyle={(params) => {
-          if (params.data._type == 'BROKER') return { background: '#7d978959' }
+        getRowClass={(params) => {
+          if (params.data._type == 'BROKER') return css` 
+          background: 'hotpink';
+           color: darkGray;
+            font-size: 15px;
+             font-weight: bold;
+             `
+          if (params.data._type == 'TRADER' && params.data._appearNow)
+            return css` 
+             animation: ${fadeIn} 0.5s ease-out
+             `
         }}
         suppressScrollOnNewData={true}
+
       />
     </div>
   );
