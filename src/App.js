@@ -69,60 +69,7 @@ const fadeOut = keyframes`
 100% { opacity: 0; }
 `
 
-const uniqueIdGenerator = (() => {
-  const alreadyUsedIds = new Set();
-  return function makeid(length) {
-    var result = 'domID-';
-    var characters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    var charactersLength = characters.length;
-    for (var i = 0; i < length; i++) {
-      result += characters.charAt(Math.floor(Math.random() * charactersLength));
-    }
-    if (alreadyUsedIds.has(result))
-      return makeid(length)
-    else {
-      alreadyUsedIds.add(result);
-      return result
-    }
-  }
-})()
 
-function createElementFromHTML(htmlString) {
-  var div = document.createElement('div');
-  div.innerHTML = htmlString.trim();
-  return div.firstChild;
-}
-function createHTMLFromElement(element) {
-  var div = document.createElement('div');
-  div.appendChild(element);
-  return div.innerHTML;
-}
-
-
-function addOnClick(element, onclick) {
-  const id = uniqueIdGenerator(5);
-  console.log(id);
-  element.setAttribute('id', id);
-  requestAnimationFrame(() =>
-    document.getElementById(id).onclick = onclick
-  )
-  return element;
-}
-const collapseIcon_Stringified = (oncollapse) => {
-  const ele = createElementFromHTML(`<img src="https://img.icons8.com/material/17/000000/add.png" style='vertical-align:middle; margin:3px;'/>`);
-  // const ele = createElementFromHTML(`<i style="color:blue;margin:3px;cursor:pointer">( + )</i>`);
-  addOnClick(ele, () => oncollapse());
-  return createHTMLFromElement(ele);
-
-}
-const expandIcon_Stringified = (onexpand) => {
-  const ele = createElementFromHTML(`<img src="https://img.icons8.com/material/13/000000/minus.png" style='vertical-align:middle; margin:3px'/>`);
-
-  // <img src="https://img.icons8.com/ios-filled/50/000000/minus.png"/>
-  // const ele = createElementFromHTML(`<i style="color:blue;margin:3px;cursor:pointer">( - )</i>`);
-  addOnClick(ele, () => onexpand());
-  return createHTMLFromElement(ele);
-}
 
 
 
@@ -173,11 +120,19 @@ function App() {
       pinned: 'left',
       cellStyle: { textAlign: 'left' },
       cellRenderer: (params) => {
+        
 
         if (params.data._type === 'BROKER' && hasAnyTrader(params.data.orgId)) {
-          return params.data.collapsed
-            ? collapseIcon_Stringified(() => show(params.data.orgId)) + params.value
-            : expandIcon_Stringified(() => hide(params.data.orgId)) + params.value;
+          const Icon = params.data.collapsed
+            ? ClickableIcon({
+              htmlString: `<img src="https://img.icons8.com/material/17/000000/minus.png" style='vertical-align:middle; margin:3px;'/>`,
+              onClick: (event) => show()
+            })
+            : ClickableIcon({
+              htmlString: `<img src="https://img.icons8.com/material/17/000000/add.png" style='vertical-align:middle; margin:3px;'/>`,
+              onClick: (event) => hide()
+            });
+          return Icon + params.value;
         }
         else if (params.data._type === 'BROKER')
           return `<div style='text-indent:23px'>${params.value}</div`
@@ -234,3 +189,4 @@ function App() {
 }
 
 export default App;
+
