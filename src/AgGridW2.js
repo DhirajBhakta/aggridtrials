@@ -15,6 +15,9 @@ const SYMBOLS = {
 const ICON_EXPAND = `<img src="https://img.icons8.com/material/17/000000/add.png" style='vertical-align:middle; margin:3px;'/>`;
 const ICON_COLLAPSE = `<img src="https://img.icons8.com/material/17/000000/minus.png" style='vertical-align:middle; margin:3px;'/>`;
 
+/**remove this later */
+const flattenArray = (array) => array.reduce((acc, curr) => [...acc, ...curr])
+
 function ParentChildManager(columnDefs, rowData, childrenKey) {
     this.collapsedGroups = new Set();
     this.childNodesMap = new Map();
@@ -27,6 +30,7 @@ function ParentChildManager(columnDefs, rowData, childrenKey) {
     columnDef.colId = this.MAIN_COLUMN_ID;
     columnDef.cellRenderer = this.collapseExpandCellRenderer.bind(this);
 
+    /**Flatten rowData: [parent1, child1.1, child1.2, child1.3, parent2, child2.1, ...] */
     this.flattenedRowData = rowData.reduce((alreadyFlattened, parent) => {
         const uniqueId = uniqueIdGenerator(5);
         parent[SYMBOLS.parentRow] = true;
@@ -56,10 +60,7 @@ ParentChildManager.prototype.init = function (api, columnApi) {
             this.childNodesMap.get(node.data[SYMBOLS.groupId]).push(node);
         }
     });
-    for (let groupId of this.parentNodesMap.keys())
-        this.collapseGroup(groupId)
-    api.refreshCells({ columns: [this.MAIN_COLUMN], force: true });
-    api.resetRowHeights();
+    this.collapseAll();
 }
 
 ParentChildManager.prototype.toggleIcon = function (groupId) {
@@ -69,6 +70,21 @@ ParentChildManager.prototype.toggleIcon = function (groupId) {
     const parentNode = this.parentNodesMap.get(groupId);
     this.api.refreshCells({
         rowNodes: [parentNode],
+        columns: [this.MAIN_COLUMN],
+        force: true
+    })
+}
+
+
+ParentChildManager.prototype.collapseAll = function () {
+    const allGroupIds = [...this.parentNodesMap.keys()]
+    const allChildNodes = flattenArray([...this.childNodesMap.values()])
+
+    allGroupIds.forEach((groupId) => this.collapsedGroups.add(groupId));
+    this.api.updateRowData({
+        remove: allChildNodes.map(node => node.data)
+    })
+    this.api.refreshCells({
         columns: [this.MAIN_COLUMN],
         force: true
     })
@@ -88,7 +104,7 @@ ParentChildManager.prototype.expandGroup = function (groupId) {
     this.api.updateRowData({
         add: this.childNodesMap.get(groupId).map(node => node.data),
         addIndex: parentNode.childIndex + 1
-    })
+    });
 }
 
 ParentChildManager.prototype.collapseExpandCellRenderer = function (params) {
@@ -129,6 +145,7 @@ const AgGridW2 = (props) => {
             <AgGridReact {...restProps}
                 onGridReady={(params) => {
                     _PC.init(params.api, params.columnApi);
+                    params.api.resetRowHeights();
                 }}
                 rowData={_PC.flattenedRowData}
                 suppressScrollOnNewData={true}
