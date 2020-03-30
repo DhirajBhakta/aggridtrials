@@ -2,10 +2,8 @@ import React, { useState } from 'react';
 import './App.css';
 import { AgGridReact } from 'ag-grid-react';
 
-import { ColDef } from 'ag-grid-community';
 import 'ag-grid-community/dist/styles/ag-grid.css';
 import 'ag-grid-community/dist/styles/ag-theme-balham.css';
-import { jsx, css, keyframes } from 'emotion';
 import { ClickableIcon, createElementFromHTML, uniqueIdGenerator } from './utils/domUtil';
 
 const SYMBOLS = {
@@ -14,8 +12,22 @@ const SYMBOLS = {
     groupId: Symbol('GROUP_ID')
 }
 
-function flattenRowData(rowData, childrenKey) {
-    return rowData.reduce((alreadyFlattened, parent) => {
+const ICON_EXPAND = `<img src="https://img.icons8.com/material/17/000000/add.png" style='vertical-align:middle; margin:3px;'/>`;
+const ICON_COLLAPSE = `<img src="https://img.icons8.com/material/17/000000/minus.png" style='vertical-align:middle; margin:3px;'/>`;
+
+function ParentChildManager(columnDefs, rowData, childrenKey) {
+    this.collapsedGroups = new Set();
+    this.childNodesMap = new Map();
+    this.parentNodesMap = new Map();
+
+    this.MAIN_COLUMN_ID = 'enableParentChild';
+
+    /** Add an extra CELL RENDERER to main column to show (+) (-) icons */
+    const columnDef = columnDefs.find(columnDef => columnDef.enableParentChild);
+    columnDef.colId = this.MAIN_COLUMN_ID;
+    columnDef.cellRenderer = this.collapseExpandCellRenderer.bind(this);
+
+    this.flattenedRowData = rowData.reduce((alreadyFlattened, parent) => {
         const uniqueId = uniqueIdGenerator(5);
         parent[SYMBOLS.parentRow] = true;
         parent[SYMBOLS.groupId] = uniqueId;
@@ -31,48 +43,74 @@ function flattenRowData(rowData, childrenKey) {
     }, [])
 }
 
-const collapsedGroups = new Set();
-const childNodesMap = new Map();
-const parentNodesMap = new Map();
-
-function collapseGroup(groupId) {
-
+ParentChildManager.prototype.init = function (api, columnApi) {
+    this.api = api;
+    this.columnApi = columnApi;
+    this.MAIN_COLUMN = this.columnApi.getColumn(this.MAIN_COLUMN_ID);
+    api.forEachNode(node => {
+        if (node.data[SYMBOLS.parentRow]) {
+            this.parentNodesMap.set(node.data[SYMBOLS.groupId], node);
+            this.childNodesMap.set(node.data[SYMBOLS.groupId], []);
+        }
+        else if (node.data[SYMBOLS.childRow]) {
+            this.childNodesMap.get(node.data[SYMBOLS.groupId]).push(node);
+        }
+    });
+    for (let groupId of this.parentNodesMap.keys())
+        this.collapseGroup(groupId)
+    api.refreshCells({ columns: [this.MAIN_COLUMN], force: true });
+    api.resetRowHeights();
 }
 
-
-function expandGroup(groupId) {
-
+ParentChildManager.prototype.toggleIcon = function (groupId) {
+    this.collapsedGroups.has(groupId)
+        ? this.collapsedGroups.delete(groupId)
+        : this.collapsedGroups.add(groupId);
+    const parentNode = this.parentNodesMap.get(groupId);
+    this.api.refreshCells({
+        rowNodes: [parentNode],
+        columns: [this.MAIN_COLUMN],
+        force: true
+    })
 }
 
-const collapseExpandCellRenderer = (params) => {
+ParentChildManager.prototype.collapseGroup = function (groupId) {
+    this.toggleIcon(groupId);
+    this.api.updateRowData({
+        remove: this.childNodesMap.get(groupId).map(node => node.data)
+    })
+}
+
+ParentChildManager.prototype.expandGroup = function (groupId) {
+    this.toggleIcon(groupId);
+    const parentNode = this.parentNodesMap.get(groupId);
+
+    this.api.updateRowData({
+        add: this.childNodesMap.get(groupId).map(node => node.data),
+        addIndex: parentNode.childIndex + 1
+    })
+}
+
+ParentChildManager.prototype.collapseExpandCellRenderer = function (params) {
+    const groupId = params.data[SYMBOLS.groupId];
+    const isParentRow = params.data[SYMBOLS.parentRow];
+    const hasChildren = this.childNodesMap.has(groupId) && this.childNodesMap.get(groupId).length > 0;
+
     const containerDiv = createElementFromHTML(`<div><p style="display:inline">${params.value}</p></div>`);
-    if (params.data[SYMBOLS.parentRow] && childNodesMap.get(params.data[SYMBOLS.groupId]) && childNodesMap.get(params.data[SYMBOLS.groupId]).length > 0) {
-        const IconElement = collapsedGroups.has(params.data[SYMBOLS.groupId])
+
+    if (isParentRow && hasChildren) {
+        const IconElement = this.collapsedGroups.has(groupId)
             ? ClickableIcon({
-                htmlString: `<img src="https://img.icons8.com/material/17/000000/add.png" style='vertical-align:middle; margin:3px;'/>`,
-                onClick: (event) => {
-                    collapsedGroups.delete(params.data[SYMBOLS.groupId]);
-                    params.api.updateRowData({
-                        add: childNodesMap.get(params.data[SYMBOLS.groupId]).map(node => node.data),
-                        addIndex: params.rowIndex + 1
-                    })
-                    params.api.refreshCells({ rowNodes: [params.node], columns: [params.column], force: true })
-                }
+                htmlString: ICON_EXPAND,
+                onClick: (event) => this.expandGroup(groupId)
             })
             : ClickableIcon({
-                htmlString: `<img src="https://img.icons8.com/material/17/000000/minus.png" style='vertical-align:middle; margin:3px;'/>`,
-                onClick: (event) => {
-                    collapsedGroups.add(params.data[SYMBOLS.groupId]);
-                    params.api.updateRowData({
-                        remove: childNodesMap.get(params.data[SYMBOLS.groupId]).map(node => node.data)
-                    })
-                    params.api.refreshCells({ rowNodes: [params.node], columns: [params.column], force: true })
-
-                }
+                htmlString: ICON_COLLAPSE,
+                onClick: (event) => this.collapseGroup(groupId)
             });
         containerDiv.prepend(IconElement);
     }
-    else if (params.data[SYMBOLS.parentRow])
+    else if (isParentRow)
         containerDiv.style.textIndent = '23px';
 
     else
@@ -80,27 +118,9 @@ const collapseExpandCellRenderer = (params) => {
     return containerDiv;
 }
 
-const addCellRenderer = (columnDef, cellRenderer) => {
-    if (columnDef.cellRenderer) {
-        const existingCellRenderer = columnDef.cellRenderer;
-        columnDef.cellRenderer = (params) => {
-            return cellRenderer(params) + existingCellRenderer(params);
-        }
-    }
-    columnDef.cellRenderer = cellRenderer;
-}
-
-
-function transformColumnDefs(columnDefs) {
-    const columnDef = columnDefs.find(columnDef => columnDef.enableParentChild);
-    columnDef.colId = 'enableParentChild';
-    addCellRenderer(columnDef, collapseExpandCellRenderer);
-}
-
 const AgGridW2 = (props) => {
-    if (props.enableParentChild) {
-        transformColumnDefs(props.columnDefs);
-    }
+
+    const _PC = new ParentChildManager(props.columnDefs, props.rowData, props.childrenKey);
 
     const { rowData, ...restProps } = props;
 
@@ -108,20 +128,9 @@ const AgGridW2 = (props) => {
         <div className="App ag-theme-balham" style={{ height: '600px', width: '1800px' }} >
             <AgGridReact {...restProps}
                 onGridReady={(params) => {
-                    params.api.forEachNode(node => {
-                        if (node.data[SYMBOLS.parentRow]) {
-                            parentNodesMap.set(node.data[SYMBOLS.groupId], node);
-                            childNodesMap.set(node.data[SYMBOLS.groupId], []);
-                        }
-                        else if (node.data[SYMBOLS.childRow]) {
-                            childNodesMap.get(node.data[SYMBOLS.groupId]).push(node);
-                        }
-                    });
-                    params.api.refreshCells({ columns: [params.columnApi.getColumn('enableParentChild')], force: true });
-                    params.api.resetRowHeights();
-
+                    _PC.init(params.api, params.columnApi);
                 }}
-                rowData={flattenRowData(props.rowData, props.childrenKey)}
+                rowData={_PC.flattenedRowData}
                 suppressScrollOnNewData={true}
                 animateRows={true}
             />
